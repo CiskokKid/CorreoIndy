@@ -1,0 +1,222 @@
+unit correopop;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
+  IdPOP3, IdMessage,  Vcl.ComCtrls, Vcl.StdCtrls, Vcl.ExtCtrls,
+  IdText, IdMessageParts ,IdAttachment;
+//  IdGlobalProtocols ;
+
+type
+  TForm1 = class(TForm)
+    Panel1: TPanel;
+    Panel2: TPanel;
+    Button1: TButton;
+    ListView1: TListView;
+    Memo1: TMemo;
+    procedure Button1Click(Sender: TObject);
+    procedure LeerCorreo( sServidor, sUsuario, sClave: String;  Mensajes: TListView );
+    procedure ProcesarMensaje(mensaje:TIdMessage);
+  private
+
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+
+var
+  Form1: TForm1;
+
+implementation
+
+{$R *.dfm}
+
+procedure TForm1.LeerCorreo( sServidor, sUsuario, sClave: String; Mensajes: TListView );
+var
+  POP3      : TIdPOP3;
+  Mensaje   : TIdMessage;
+  i,j ,k    : Integer;
+  sAdjunto  : String; // Nombre del archivo adjunto
+  LText     : TIdText;
+  LMsgPart  : TIdMessagePart;
+  cuerpo    :string;
+  archivo:string;
+  extension:string;
+  Descargado:boolean;
+
+begin
+  // creamos el objeto POP3
+  POP3 := TIdPOP3.Create( nil );
+  POP3.Host := sServidor;
+  POP3.Username := sUsuario;
+  POP3.Password := sClave;
+  POP3.Port := 110;
+
+  // conectamos con el servidor
+  try
+    POP3.Connect;
+  except
+    raise Exception.Create( 'Error al conectar con el servidor.' );
+  end;
+
+  Mensaje := TIdMessage.Create( nil );   // creamos el mensaje, en este objeto se meteran cada uno de los correos
+  for i := 1 to POP3.CheckMessages do    // se recorren la lista de correos
+  begin
+    // Leemos la cabecera del mensaje
+    Mensaje.Clear;
+    //POP3.RetrieveHeader( i, Mensaje );  // solo lee el encabezado
+
+    POP3.Retrieve( i, Mensaje );
+
+
+
+
+  end;
+
+
+  POP3.Disconnect();   // al cerrar debe procesar los cambios, en este caso los correos marcados para eliminar
+  FreeAndNil( ltext );
+  FreeAndNil( Mensaje );
+  FreeAndNil( POP3 );
+
+end;
+procedure TForm1.ProcesarMensaje(mensaje: TIdMessage);
+begin
+  //----- procesar el mensaje
+
+
+    memo1.Lines.Add('msgID:='+   Mensaje.MsgId       );
+
+    //  buscar en la base de datos para  revisar si el "Mensaje.MsgId" ha sido procesado
+    //  se procesara solo en caso de que no se encuentre en la base de datos
+    //  para hacer mas simple esto, hacer un procedimiento para procesar
+    // una vez procesado, si se descargaron los archivos, se mete a la base de datos
+    // esto hara que en el correo se queden los archivos sin anexos o con anexos no validos
+    // se quedaran ahi para ser procesados en forma manual
+    // por lo pronto
+
+
+    //  mensaje.ContentType :=  'text/html';
+
+    Mensajes.Items.Add;
+    Mensajes.Items[i-1].SubItems.Add( Mensaje.From.Address );          // dirección
+    Mensajes.Items[i-1].SubItems.Add( Mensaje.Subject );               // asunto
+    Mensajes.Items[i-1].SubItems.Add( DateTimeToStr( Mensaje.Date ) ); // Fecha-hora
+
+   // Mensajes.Items[i-1].SubItems.Add( inttostr( pop3.RetrieveMsgSize(i)) ); // anexos
+   // Mensajes.Items[i-1].SubItems.Add( inttostr(mensaje.MessageParts.Count ) ); // anexos
+   //sAdjunto := TIdAttachment( Mensaje.MessageParts.Items[i] ).FileName;
+    Mensajes.Items[i-1].SubItems.Add( inttostr(mensaje.MessageParts.Count) ); // anexos
+
+    // muestra el tipo de contenido        en contentype
+    Mensajes.Items[i-1].SubItems.Add( mensaje.ContentType);
+
+
+    cuerpo:='';
+    for k := 0 to mensaje.Body.Count-1 do
+      Cuerpo:=cuerpo+mensaje.Body[k];
+    Mensajes.Items[i-1].SubItems.Add( cuerpo);  // body
+
+    Mensajes.Items[i-1].SubItems.Add( mensaje.Body.Text);  // body
+
+
+        ///   buscando parte por parte en el mensaje  , ,meterlo en bodypartes
+    ltext := TIdText.Create( nil );
+    LText := nil;
+    for j := 0 to mensaje.MessageParts.Count-1 do
+    begin
+        LMsgPart := mensaje.MessageParts[j];
+        if (LMsgPart is TIdText) then
+          //and  IsHeaderMediaType(LMsgPart.ContentType, 'text/plain') then
+        begin
+          LText := TIdText(LMsgPart);
+          Break;
+        end
+    end;
+    if     (mensaje.ContentType<>'text/html' )                                // cuando es de este tipo, falla
+      and  (Mensaje.From.Address <>'facturacion@productossantaofelia.com')    // falla porque no tiene nada de cuerpo
+      then
+      if LText<>nil then /// cuando viene vacio falla
+      Mensajes.Items[i-1].SubItems.Add(  Ltext.ToString ); // Body
+
+
+
+      //*******************************************
+        // recibir los anexos,
+      if (Mensaje.Date>=strtodate('23/02/2022'))  then
+      begin                                                                                             //******  A01
+
+        Descargado:=false;
+        for j := 0 to mensaje.MessageParts.Count-1 do
+        begin                                             //-----004
+          if mensaje.MessageParts[j] is TIdAttachment then
+          begin                                             //------03
+            with TIdAttachment(mensaje.MessageParts[j]) do
+            begin                                           //------02
+              archivo := IncludeTrailingPathDelimiter('c:\correos\') + ExtractFileName(FileName);
+              extension:= uppercase(ExtractFileExt(archivo));
+              //memo1.Lines.Add(extension);
+              if (extension ='.PDF') or (extension ='.XML')  then
+              begin                                          // -----01.01
+                if not FileExists(archivo) then
+                begin                                          //-----01
+                  //memo1.lines.add(  Mensaje.Subject + '-->' + archivo);
+                  if (Mensaje.From.Address <>'sistema@quadrum.mx')
+
+                   then
+                   begin
+                     SaveToFile(archivo);
+                     Descargado:=true;
+                   end;
+                end;                                          //-----01
+              end;                                           // -----01.01
+             end;                                           //------02
+            end;                                           //------03
+          end;                                            //-----004
+
+          //****************************
+       //    if Descargado  then
+       //    begin
+       //       meter a la base de datos con el Mensaje.MsgId
+       //   end;
+
+
+
+          // ELIMINAR LOS QUE YA TIENEN UN DETERMINADO NUMERO DE DIAS EN EL SERVIDOR DE CORREOS
+          // POR EJEMPLO LOS QUE YA TIENEN MAS DE 15 DIAS
+
+          if (Mensaje.Date<=strtodate('17/02/2022')) and (Descargado) then
+          begin
+            memo1.lines.add('Eliminado:' +
+              datetostr(Mensaje.Date)  + ' ' +
+              Mensaje.From.Address + ' ' +
+              Mensaje.Subject      );
+              pop3.delete(i);
+          end;
+
+          end;                                                                                          //******  A01
+
+
+
+
+
+
+  ///******************************************
+
+
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+begin
+//  LeerCorreo('pop.alcodesa.net', 'alcodesa01@alcodesa.net', 'fhRSUduU17', ListView1 );
+  LeerCorreo('pop.grupoalcodesa.com', 'facturas@grupoalcodesa.com', 'ZIx94muq', ListView1 );
+//    LeerCorreo('pop.grupoalcodesa.com', 'facturasfarmacia@grupoalcodesa.com', '36520110101', ListView1 );
+
+
+end;
+
+end.
+
